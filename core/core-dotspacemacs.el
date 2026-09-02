@@ -47,16 +47,24 @@ their configuration.")
   (let ((spacemacs-dir
          (file-name-as-directory
           (or (getenv "SPACEMACSDIR")
-              (if-let* ((xdg-conf (getenv "XDG_CONFIG_HOME"))
-                        (xdg-conf-spacemacs (concat (file-name-as-directory xdg-conf) "spacemacs/"))
-                        ((file-directory-p xdg-conf-spacemacs)))
-                  xdg-conf-spacemacs
-                "~/.spacemacs.d/")))))
+              (let ((local-spacemacs
+                     (expand-file-name ".spacemacs.d/"
+                                       spacemacs-start-directory)))
+                (if (file-directory-p local-spacemacs)
+                    local-spacemacs
+                  (if-let* ((xdg-conf (getenv "XDG_CONFIG_HOME"))
+                            (xdg-conf-spacemacs
+                             (concat (file-name-as-directory xdg-conf)
+                                     "spacemacs/"))
+                            ((file-directory-p xdg-conf-spacemacs)))
+                      xdg-conf-spacemacs
+                    "~/.spacemacs.d/")))))))
     (when (file-directory-p spacemacs-dir)
       spacemacs-dir))
   "Directory containing Spacemacs customizations (defaults to nil).
 - If environment variable SPACEMACSDIR is set and that directory exists,
   use that value.
+- If .spacemacs.d exists inside `spacemacs-start-directory', use it.
 - If environment variable XDG_CONFIG_HOME is set and its subdirectory
   \"spacemacs\" exists, use that value.
 - Otherwise use ~/.spacemacs.d if it exists.")

@@ -544,6 +544,10 @@ and then install the =.spacemacs= file in your =HOME= directory.
 A dotdirectory =~/.spacemacs.d/= can be used instead of a dotfile.
 If you want to use this option, move =~/.spacemacs= to =~/.spacemacs.d/init.el=.
 
+When the Spacemacs checkout contains a =.spacemacs.d/= directory, its =init.el=
+is used automatically. This supports keeping the configuration as a submodule
+of the Spacemacs repository.
+
 It is also possible to override the location of =~/.spacemacs.d/= using the
 environment variable =SPACEMACSDIR=. Of course, you can also use symlinks to
 change the location of this directory.

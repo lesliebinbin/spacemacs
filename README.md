@@ -440,8 +440,12 @@ For example, if you've cloned Spacemacs to `"${HOME}/Spacemacs"`, and if you use
    [general documentation][DOCUMENTATION.org] and
    [quick start guide][QUICK_START.org] for more information.
 
-5. In case you want to store your `dotspacemacs` at another location, say
-   under `"${HOME}/.spacemacs.d"`:
+5. If the Spacemacs checkout contains `.spacemacs.d/init.el`, Spacemacs uses it
+   automatically. This allows the configuration directory to be maintained as
+   a Git submodule.
+
+   To store your `dotspacemacs` at another location, such as
+   `"${HOME}/.spacemacs.d"`:
 
    - First set the environment variable `SPACEMACSDIR` to
    `"${HOME}/.spacemacs.d"`.
