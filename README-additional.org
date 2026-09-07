@@ -1,0 +1,30 @@
+#+TITLE: Spacemacs Fork & Local Configuration Notes
+#+AUTHOR: Leslie Huang
+#+DATE: 2026-09-07
+#+STARTUP: showall
+
+* Overview
+
+This repository is a personal fork of the official [[https://github.com/syl20bnr/spacemacs][Spacemacs]] distribution.
+
+** Upstream Synchronization Policy
+To prevent merge conflicts when pulling or rebasing against upstream Spacemacs:
+- The root ~README.md~ and core Spacemacs files must *remain untouched*.
+- All custom notes, maintenance procedures, and repository additions should be documented in this file (~README-additional.org~) or under ~.spacemacs.d/~.
+
+* Submodules and Custom Assets
+
+** .spacemacs.d Submodule
+All user configuration, personal layers, and automation live in the git submodule:
+- Submodule path: ~.spacemacs.d~
+- Repository: ~git@github.com:lesliebinbin/.spacemacs.d.git~
+
+** Reusable Agent Assets
+Reusable agent skills, runbooks, and profiles are located in ~.spacemacs.d/agents/~:
+- Runbooks: ~.spacemacs.d/agents/runbooks/~
+- Skills: ~.spacemacs.d/agents/skills/~
+- Profiles: ~.spacemacs.d/agents/profiles/~
+
+Notable workflows include:
+- =emacs-package-fork-patch=: Procedure to fork, test with =eldev=, patch, and wire unmaintained Emacs packages into Spacemacs via Quelpa recipes without relying on fragile runtime monkey-patching.
+- =scikit-build-cuda-extension=: Bootstrap CMake/CUDA-backed Python C++ native extensions.
