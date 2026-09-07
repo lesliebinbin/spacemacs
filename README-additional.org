@@ -28,3 +28,15 @@ Reusable agent skills, runbooks, and profiles are located in ~.spacemacs.d/agent
 Notable workflows include:
 - =emacs-package-fork-patch=: Procedure to fork, test with =eldev=, patch, and wire unmaintained Emacs packages into Spacemacs via Quelpa recipes without relying on fragile runtime monkey-patching.
 - =scikit-build-cuda-extension=: Bootstrap CMake/CUDA-backed Python C++ native extensions.
+
+* Cross-Repository Task Tracking
+
+Tasks spanning this repository, the =.spacemacs.d= submodule, and external
+component repositories are coordinated under =todos/= in this parent
+repository.
+
+- Canonical task files remain in their project directory, such as
+  =todos/emacs-jupyter-eval/=.
+- Lifecycle directories (=DRAFT=, =READY=, =IN_PROGRESS=, =BLOCKED=, =DONE=,
+  and =CANCELLED=) contain only relative symlinks to canonical task files.
+- A task appears in exactly one lifecycle directory at a time.
