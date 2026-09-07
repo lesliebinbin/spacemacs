@@ -1,6 +1,6 @@
 # TODO — Fix origami `origami-fold-header-face` "Invalid face box" at the source
 
-Status: **not started** (temporary fix in place, see §2).
+Status: **completed** (2026-09-07).
 Created: 2026-09-04
 
 ## 1. Context
@@ -110,3 +110,17 @@ truth.
 6. Restart Emacs and re-test: open a `.cu` file, `M-x toggle-debug-on-error`,
    type `prin`, confirm the completion tooltip appears with no error. Also
    re-test in `emacs -nw`.
+
+## 5. Resolution Summary (2026-09-07)
+
+- **Fork:** `git@github.com:lesliebinbin/origami.el.git`
+- **Commit:** `8647d781834aa4e6cb918e46ac26c1684651803b`
+  - Replaced load-time backquote `:box` calculation in `origami-fold-header-face` with static light/dark/default face spec.
+  - Fixed stray quote on `:inherit font-lock-comment-face` in `origami-fold-replacement-face`.
+  - Replaced deprecated `cl` with `cl-lib` (`cl-destructuring-bind`, `cl-remove-if`) and added `(require 's)`.
+  - Updated deprecated `define-global-minor-mode` to `define-globalized-minor-mode`.
+  - Verified compilation via `eldev` with zero errors.
+- **Spacemacs Configuration:**
+  - Added recipe pointing to commit `8647d781834aa4e6cb918e46ac26c1684651803b` under `dotspacemacs-additional-packages` in `.spacemacs.d/emacs-config/layers.el`.
+  - Removed temporary `custom-set-faces` override from `.spacemacs.d/emacs-config/user-config.el`.
+  - Installed and verified package loading via Quelpa into `elpa/31.1/develop/origami-20260907.94752/`.
