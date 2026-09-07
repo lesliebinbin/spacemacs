@@ -1,0 +1,185 @@
+#+TITLE: Multi-kernel Renderer and Browser Access Modes
+#+AUTHOR: Leslie Huang
+#+DATE: 2026-09-07
+#+STARTUP: showall
+#+TODO: DRAFT(d) READY(r) IN_PROGRESS(i!) BLOCKED(b@) | DONE(D!) CANCELLED(c@)
+
+* READY Multi-kernel renderer and browser access modes
+
+** Purpose
+
+Extend =jupyter-eval= so multiple buffer-associated Jupyter sessions can run
+concurrently through one renderer origin, while distinguishing interactive
+Emacs xwidget access from read-only external-browser access.
+
+This file is the single lifecycle and requirements record for the feature. It
+does not prescribe agent topology or delegation mechanics; those belong in the
+parent repository's =AGENTS.md=.
+
+** Repository boundaries
+
+| Area | Responsibility |
+|------+----------------|
+| =.emacs.d= | Feature record and cross-repository context |
+| =.spacemacs.d= | Package recipe and user-configuration integration |
+| =/home/lesliebinbin/codings/emacs-jupyter-eval= | Coordinator, adapter, engine, brokers, renderer, tests, and product documentation |
+
+The upstream Spacemacs root =README.md= and core files are not customization
+surfaces. Product behavior belongs in =emacs-jupyter-eval=; integration
+changes belong in =.spacemacs.d=.
+
+** Current behavior
+
+- Starting a kernel stops the previously managed kernel and replaces global
+  coordinator process state.
+- One renderer serves an unparameterized root page at
+  =http://127.0.0.1:5173/=.
+- The renderer receives one kernel name and event URL through Vite environment
+  variables at startup.
+- Each kernel execution uses a separate dynamically allocated event-broker
+  port.
+- Emacs opens the renderer with xwidget WebKit when available.
+- Without xwidget WebKit, Emacs reports the URL but does not open an external
+  browser.
+- Any renderer client can currently use the widget comm back-channel.
+
+** Required behavior
+
+*** Sessions
+
+- Multiple kernels can remain active concurrently.
+- A source buffer has at most one live associated session.
+- Starting from a buffer with a live session reuses and reopens that session.
+- Session identity remains unique when several buffers use the same
+  kernelspec.
+- Session labels identify both the kernel and associated buffer.
+- Killing a source buffer does not stop its session.
+- =jupyter-eval-stop= stops the current buffer's session.
+- A separate =jupyter-eval-stop-all= command stops every managed session.
+- Stopping or failing one session does not interrupt other sessions.
+
+*** Shared renderer
+
+- One long-lived renderer remains available on loopback port =5173=.
+- The root path lists currently running sessions.
+- Each session has a dedicated path:
+  =/sessions/<session-id>=.
+- All user-facing session pages use the same renderer origin even when
+  internal event brokers use different ports.
+- The session list reflects starts, stops, failures, and stale sessions.
+- Page refresh and renderer restart recover active session discovery and live
+  event connections.
+- Session switching or reconnection cannot mix cells, events, widget models,
+  or pending messages across sessions.
+
+*** Access modes
+
+- A plain session URL is safe to open in an external browser and grants
+  read-only access.
+- Emacs prefers an xwidget session with explicit interactive authorization.
+- When xwidget is unavailable, Emacs opens the plain read-only URL through
+  =browse-url=.
+- Interactive authorization is random, unguessable, session-scoped, and
+  replaced when a session generation is replaced.
+- Interactive capability material is not exposed by session discovery.
+- Authorization is never inferred from User-Agent or browser type.
+- Read-only clients cannot send widget comm messages or otherwise mutate
+  kernel state.
+- Read-only widget state remains visible, but controls are visibly and
+  functionally disabled.
+- The broker enforces read-only access independently of renderer UI behavior.
+- Services remain bound to loopback; remote or LAN browser access is not part
+  of this feature.
+
+*** Compatibility
+
+The following behavior remains available in the appropriate access mode:
+
+- stream output;
+- errors and tracebacks;
+- rich MIME output;
+- display updates;
+- execution counts;
+- ipywidget rendering;
+- interactive widget changes from authorized xwidget sessions;
+- =code-cells= region evaluation.
+
+** Components in scope
+
+- The =jupyter-eval.el= coordinator and session lifecycle.
+- The Emacs =code-cells= adapter where buffer-to-session routing is affected.
+- Python engine launch identity and lifecycle metadata.
+- Input and output brokers, including event transport and widget authorization.
+- React/Vite session discovery, routing, live output, rich MIME rendering, and
+  widgets.
+- The =.spacemacs.d= Quelpa recipe and user configuration only where needed to
+  consume the feature.
+- Automated and live integration coverage for the affected behavior.
+
+** Out of scope
+
+- Deriving additional semantics from Jupyter execution request IDs.
+- Changing upstream Spacemacs core files.
+- Adding notebook-style editing chrome.
+- Enabling kernel stdin prompts such as Python =input()=.
+- Remote or LAN renderer access.
+- Treating disabled UI controls as an authorization boundary.
+
+** Confirmed integration decisions
+
+- Product work uses branch
+  =feature/multi-kernel-renderer-access-modes= based on updated
+  =origin/master=.
+- After that branch is pushed, the =.spacemacs.d= =jupyter-eval= Quelpa
+  =github-ssh= recipe points to it with =:branch= for integration.
+- Product changes may be committed and pushed from the product repository.
+- Parent and =.spacemacs.d= changes remain uncommitted and unpushed for user
+  review.
+- Installed package copies under =.emacs.d/elpa/= are never edited.
+
+** Acceptance criteria
+
+- At least two buffer-associated kernels run concurrently.
+- Each buffer sends code only to its associated kernel.
+- Stopping or failing one session leaves other sessions operational.
+- One renderer root accurately lists live sessions and routes to each feed.
+- Session pages recover correctly after refresh and renderer restart.
+- Existing output types and widgets remain functional.
+- An authorized xwidget client can mutate widget state.
+- An external read-only client can render the same output but cannot mutate
+  kernel state.
+- Missing, stale, invalid, and cross-session interactive capabilities are
+  rejected.
+- Product-level automated checks and a live two-kernel pipeline pass.
+- The pushed product branch installs and works from the actual
+  =.spacemacs.d= configuration.
+
+** Lifecycle record
+
+*** DRAFT Product implementation
+
+- Branch:
+- Head:
+- Status:
+- Result:
+
+*** DRAFT Spacemacs integration
+
+- Product ref consumed:
+- Configuration changes:
+- Status:
+- Result:
+
+*** DRAFT Verification
+
+- Automated checks:
+- Live multi-kernel result:
+- Interactive xwidget result:
+- External read-only result:
+- Recovery and stale-session result:
+
+*** DRAFT Outcome
+
+- Final status:
+- Completed at:
+- Follow-up work:

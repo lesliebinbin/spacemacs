@@ -29,14 +29,15 @@ Notable workflows include:
 - =emacs-package-fork-patch=: Procedure to fork, test with =eldev=, patch, and wire unmaintained Emacs packages into Spacemacs via Quelpa recipes without relying on fragile runtime monkey-patching.
 - =scikit-build-cuda-extension=: Bootstrap CMake/CUDA-backed Python C++ native extensions.
 
-* Cross-Repository Task Tracking
+* Cross-Repository Feature Runbooks
 
-Tasks spanning this repository, the =.spacemacs.d= submodule, and external
-component repositories are coordinated under =todos/= in this parent
+Features spanning this repository, the =.spacemacs.d= submodule, and external
+component repositories are recorded under =runbook/= in this parent
 repository.
 
-- Canonical task files remain in their project directory, such as
-  =todos/emacs-jupyter-eval/=.
-- Lifecycle directories (=DRAFT=, =READY=, =IN_PROGRESS=, =BLOCKED=, =DONE=,
-  and =CANCELLED=) contain only relative symlinks to canonical task files.
-- A task appears in exactly one lifecycle directory at a time.
+- Each feature has one self-contained Org file in its project directory, such
+  as =runbook/emacs-jupyter-eval/renderer-001.org=.
+- Org TODO keywords record lifecycle state within the feature file.
+- Feature files contain context, requirements, decisions, scope, acceptance
+  criteria, and outcomes. Reusable agent-routing and delegation policy belongs
+  in =AGENTS.md=.
