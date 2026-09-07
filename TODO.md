@@ -121,6 +121,6 @@ truth.
   - Updated deprecated `define-global-minor-mode` to `define-globalized-minor-mode`.
   - Verified compilation via `eldev` with zero errors.
 - **Spacemacs Configuration:**
-  - Added recipe pointing to commit `8647d781834aa4e6cb918e46ac26c1684651803b` under `dotspacemacs-additional-packages` in `.spacemacs.d/emacs-config/layers.el`.
+  - Added recipe pointing to fork `lesliebinbin/origami.el` under `dotspacemacs-additional-packages` in `.spacemacs.d/emacs-config/layers.el`.
   - Removed temporary `custom-set-faces` override from `.spacemacs.d/emacs-config/user-config.el`.
   - Installed and verified package loading via Quelpa into `elpa/31.1/develop/origami-20260907.94752/`.
