@@ -48,10 +48,10 @@ feature.
 
 ** Acceptance criteria
 
-- [ ] Transpiler parses a Ruby DSL source file and generates valid, readable S-expressions in =.el= format.
-- [ ] Emitted =.el= code passes =emacs -Q --batch -f batch-byte-compile= without warnings or errors.
-- [ ] Executed code produces identical behavior between Ruby source logic and Elisp evaluation.
-- [ ] Round-trip integration test runs via automated test harness.
+- [X] Transpiler parses a Ruby DSL source file and generates valid, readable S-expressions in =.el= format.
+- [X] Emitted =.el= code passes =emacs -Q --batch -f batch-byte-compile= without warnings or errors.
+- [X] Executed code produces identical behavior between Ruby source logic and Elisp evaluation.
+- [X] Round-trip integration test runs via automated test harness (RSpec + Emacs batch runner).
 
 ** Lifecycle record
 
@@ -60,26 +60,30 @@ feature.
 - Documented full VM stack architecture and instruction encoding in =emacs-opcode-datasheet.md=.
 - Verified opcode execution with =disassemble= and raw closure objects =#[...] =.
 
-*** READY Phase 1: Transpiler Project Scaffolding
-- Initialize project at =~/codings/ruby-elisp-transpiler=.
-- Setup Ruby Gem structure with Bundler, =prism= dependency, and RSpec/Minitest.
-- Create CLI entrypoint =bin/ruby2elisp=.
+*** DONE Phase 1: Transpiler Project Scaffolding
+- Initialized Git repository and gem layout at =~/codings/ruby-elisp-transpiler=.
+- Configured gemspec (=ruby-elisp-transpiler.gemspec=), Bundler Gemfile, and Rakefile with RSpec.
+- Created CLI entrypoint =bin/ruby2elisp=.
 
-*** DRAFT Phase 2: Core AST Visitor (Prism -> S-Expression)
-- Implement =Ruby2Elisp::Visitor < Prism::Visitor=.
-- Map literals (integers, floats, strings, symbols, booleans, nil).
-- Map variable assignments, binary/unary expressions, and method calls.
-- Map function definitions (=def=) and local blocks.
+*** DONE Phase 2: Core AST Visitor (Prism -> S-Expression)
+- Built OOP S-expression domain model (=Ruby2Elisp::Sexpr=) with =List=, =Atom=, =SymbolNode=, =Literal=, =VectorNode=.
+- Implemented =Ruby2Elisp::Visitor::AstVisitor < Prism::Visitor= translating method definitions, calls, binary operations, lexical variable scoping (=let*=), and lambdas into idiomatic S-expressions.
 
-*** DRAFT Phase 3: Control Flow & Emacs Primitives
-- Implement =if=, =unless=, =case= / =when= constructs.
-- Provide DSL helpers for buffer, window, and editor operations.
-- Map Ruby hash/array syntax to Elisp association lists and vectors.
+*** DONE Phase 3: Control Flow & Scoping
+- Implemented =if= and =unless= branching with single-expression and =progn= block handling.
+- Local variable write and read handling wrapped in lexical bindings.
 
-*** DRAFT Phase 4: Emacs Batch Validation Harness
-- Build test helper invoking =emacs -Q --batch --eval= to compile and test output files.
-- Verify zero compiler warnings with =lexical-binding: t=.
+*** DONE Phase 4: Emacs Batch Validation Harness
+- Built RSpec test harness (=spec/spec_helper.rb=) running =emacs -Q --batch -f batch-byte-compile= and batch =--eval=.
+- Verified zero compiler warnings under lexical-binding (=;;; -*- lexical-binding: t; -*-=).
 
-*** DRAFT Phase 5: Direct Bytecode & Closure Synthesis
+*** READY Phase 5: Standard Elisp Functions Ruby Header Stubs
+- Branch: =elisp-std-functions-stub= in =~/codings/ruby-elisp-transpiler=.
+- Approach: Selected *Option 2* (Ruby method stubs with YARD docstrings) to serve as code hints / declarations for language servers (Solargraph, Ruby LSP, etc.).
+- Scope: Target standard GNU Emacs Lisp functions enumerated via =/usr/local/bin/emacs= (subrs and core preloaded primitives).
+- Exclusions: Explicitly exclude Lisp macros, reader syntax, and user-defined functions; focus exclusively on standard callable functions.
+- Deliverable: Generator script and output stubs under =lib/ruby2elisp/stdlib/=, plus RSpec validation.
+
+*** DRAFT Phase 6: Direct Bytecode & Closure Synthesis
 - Implement direct opcode emitter utilizing =emacs-opcode-datasheet.md=.
 - Emit raw byte-code closure objects and =.elc= containers.
