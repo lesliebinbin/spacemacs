@@ -338,7 +338,92 @@ Demonstrate =get-buffer-create=, =insert=, =buffer-string=, and
 =current-buffer= using this operation. Window display changes such as
 =switch-to-buffer= are separate, deliberate editor effects.
 
-** TODO 5. Demonstrate a generated client and runtime tests
+** DONE TODO 5. Demonstrate a generated client and runtime tests
+
+*** Log (2026-09-09): independent Python consumer + limits/quota/lease
+
+- Consumer project (new, separate checkout): =~/codings/emacs-rpc-py-client-test=,
+  uv-managed (pyproject + =uv sync=; CPython 3.12.11 managed by uv).  It is
+  a first independent consumer in the strongest sense: it regenerates its
+  own stubs from =proto/emacs_rpc.proto= with =grpc_tools.protoc= at import
+  time (stamp = sha256 of the proto; =ERB_EXT_ROOT= overrides the default
+  extension path), so client and server can never drift.  No Python in the
+  extension; its CMake/protoc output is unchanged.
+- Client API (package =emacs_rpc=): =ErpcClient(socket_path)= opens the
+  session and negotiates versions at construction; =call(name, *values)=
+  reads like funcall; =release(*handles)=; =with_buffer(handle)= -> a
+  BufferSession whose =call()= runs one op per WithBuffer dispatch under
+  save-current-buffer (dependencies between ops work naturally) and whose
+  =batch()= sends several ops in ONE WithBuffer RPC (server stops at the
+  first error; entries are values or LispError).  Value mapping: None/bool/
+  int (range-checked 64-bit)/float/str (text)/bytes (unibyte, <= the
+  dispatch's 2048-byte per-arg cap)/Symbol (interned locally at dispatch)/
+  Handle (opaque session-scoped).  Lisp signals raise =LispError(symbol,
+  message)=; transport failures surface as grpc.RpcError.  One client is
+  thread-safe (gRPC stub); the server serializes on the Emacs thread.
+- TODO 3 NOT-DONE items landed (all fixed at =native-start=; lisp
+  defcustoms =emacs-rpc-bridge-lease-seconds= 300 / =-max-sessions= 32 /
+  =-max-message-bytes= 0):
+  - Message-size limit: ServerBuilder.SetMaxReceiveMessageSize when the
+    knob > 0 (0 = gRPC's 4 MiB default); oversized requests are rejected by
+    the transport with RESOURCE_EXHAUSTED before touching queue or Emacs.
+  - Session quota: OpenSession -> RESOURCE_EXHAUSTED at cap (0 = unlimited;
+    two racing workers may overshoot by one — a soft quota, noted in code).
+  - Inactivity lease: every request touches the session (registry
+    =touch()=, replacing the bare exists() checks); the drain's continuous
+    timer makes =drain_once= the lease heartbeat, sweeping
+    =expire_older_than(env, lease)= (collect-under-lock then close_session,
+    freeing global refs on the Emacs thread).  A session can die between
+    enqueue and drain: dispatch_job now fails kCall/kWithBuffer of a
+    vanished session with a structured "unknown-session" error instead of
+    executing side effects for a client that owns no session.
+  - Lisp adapter: =emacs-rpc-bridge-start= now forwards six arguments
+    (socket, queue, max-per-tick, lease, sessions, message bytes) from the
+    defcustoms.  BUG FOUND AND FIXED HERE: =apply= takes the argument LIST
+    as its last argument — the first version passed the trailing 0 bare and
+    died with =(wrong-type-argument listp 0)= at every start.
+- =emacs_bridge_server.el= accepts =ERB_LEASE_SECONDS= / =ERB_MAX_SESSIONS= /
+  =ERB_MAX_MESSAGE_BYTES= env knobs (absent = defcustoms, so the C++
+  harness is unaffected); each knobbed scenario spawns its own server.
+- Validation — Python runtime acceptance suite =tests/run_all.py=
+  (=uv run python tests/run_all.py = from the consumer project), 51 checks
+  PASS, stable across three runs (~11 s each; emacs spawn per phase with
+  ready/halt/log files and timeouts):
+  1-13 functional acceptance over one default server: version negotiation,
+  =Call("+",[3,7])= -> 10, floats, multibyte concat, nil/t, symbol vs
+  string round-trips (incl. =eq= on repeated sends), buffer handle +
+  WithBuffer unicode round-trip, current-buffer restored on success AND
+  in-sequence error with earlier effects kept and the stop-on-error
+  semantics visible, post-error usability, explicit-GC retention, release
+  -> reuse fails (structured arg error + FAILED_PRECONDITION WithBuffer),
+  kill-buffer -> structured fatal not a crash, session isolation, 1001-op
+  cap, queued cancellation (deadline while an =erb-busy= op occupies the
+  Emacs thread; the cancelled op provably never ran — its buffer does not
+  exist afterwards; no rollback claimed), shutdown-with-pending (accepts
+  OK/DEADLINE/CANCELLED, emacs exits 0).
+  14-16 knobbed servers: message limit (16 KiB cap, ~200 KB arg ->
+  RESOURCE_EXHAUSTED "Received message larger than max", server usable
+  after); quota (2 -> third OpenSession RESOURCE_EXHAUSTED, CloseSession
+  frees the slot); lease (1 s idle -> FAILED_PRECONDITION "unknown
+  session"; a session calling every 0.35 s survives past the lease).
+- Wire finding re-confirmed (TODO 3 log (a)): ASCII-only results can be
+  legitimately kUnibyte in batch Emacs (=symbol-name= of an interned ASCII
+  name arrives as bytes); the client returns bytes for kUnibyte and the
+  suite compares text/unibyte by bytes.
+- Adapter sanity under =emacs -Q --batch=: knob pass-through, start/stop/
+  restart cycles, idempotent stop, all-default start — PASS.  Extension
+  suites still green after the refactor: codegen_smoke + integration_test
+  (47 checks) via =ctest --test-dir build=, 1.74 s.
+- Commands/versions: Emacs 31.1 (=/usr/local/bin/emacs=); gRPC C++ 1.83.1 +
+  protobuf 35.1 from =/home/lesliebinbinhuang/local=; uv 0.12.9 (mise shim),
+  CPython 3.12.11, grpcio/grpcio-tools 1.83.1, python protobuf 7.36.1 in
+  =~/codings/emacs-rpc-py-client-test/venv=.  Build/test commands:
+  extension =cmake --preset default && cmake --build build && ctest --test-dir build=;
+  consumer =uv sync && uv run python tests/run_all.py=.
+- NOT DONE / deferred: RegisterCallback (TODO 6); client auto-reopen after
+  lease expiry (documented: reopen explicitly); Error.tag still unset on
+  the wire; Handle.kind advisory and not populated; higher-level
+  Buffer/Window/Frame wrappers.
 
 Use a Python client generated from the same schema as a first independent
 consumer. It requires no direct Tree-sitter or Emacs C bindings.
