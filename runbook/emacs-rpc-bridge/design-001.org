@@ -84,6 +84,28 @@ Bound both queue length and work drained per tick. Do not hold queue locks
 while calling Lisp. A long-running Lisp call can still block Emacs: RPC
 does not make arbitrary Lisp execution parallel or preemptible.
 
+Backpressure decision (2026-09-08): when the request queue is full, server
+handlers WAIT for a free slot (blocking backpressure) instead of failing
+fast. A full queue means Emacs is behind; the client's own deadline is the
+escape hatch, and backpressure naturally propagates up to channel/socket
+buffers. This bounds in-flight memory by max concurrent handlers, not by
+queue depth alone. =stop()= must broadcast/wake handlers blocked on a full
+queue (and on completions) before joining them.
+
+Runtime knobs (2026-09-08, decided; defaults set by the user):
+- Queue depth =100 (defcustom =emacs-rpc-bridge-queue-depth=).
+- Drain timer period =0.1 s/100 ms (defcustom =emacs-rpc-bridge-timer-period=).
+  Interval is fixed at timer creation, so the defcustom needs a =:set= hook
+  that cancels/recreates the timer while the bridge is running.
+- Max work per drain tick =20 requests (defcustom
+  =emacs-rpc-bridge-max-drain-per-tick=): bounds the longest single stall of
+  the editor to one tick's slice; remaining requests wait for the next tick.
+  Sustained throughput ceiling ~200 calls/s; the queue absorbs bursts above
+  that and wait-backpressure pushes the excess to clients.
+- Queue depth and the per-tick bound are fixed at =native-start= time (the
+  C++ side sizes its queue/tick budget once); changing them mid-session
+  takes effect after stop/start.
+
 ** DONE 1. Scaffold and validate the CMake build
 
 Suggested layout:
@@ -202,7 +224,7 @@ at C callback boundaries.
   before the bridge implementation starts. Rebuild cost is the same whenever
   it happens, so defer it until TODO 3 begins.
 
-** TODO 3. Implement dispatch and object lifetime
+** DONE TODO 3. Implement dispatch and object lifetime
 
 - Register explicit start, drain, and stop native functions, with an Elisp
   adapter that creates/cancels the timer.
@@ -222,7 +244,85 @@ at C callback boundaries.
   timer, and release references while Emacs is alive. Avoid blocking the
   Emacs thread joining a worker that is waiting for Emacs dispatch.
 
-** TODO 4. Make buffer context explicit
+*** Log (2026-09-09): implementation complete; validated end-to-end
+
+- Implementation layout (all under the extension root):
+  =src/bridge.h= env-free wire types, Slot/RequestJob, SessionRegistry,
+  ServerCore (public =Impl=, private =impl_=); =src/bridge_internal.h= the
+  full Impl (queue, qspace cv, knobs, service); =src/server.cpp= gRPC service
+  + queueing/backpressure + shutdown ordering; =src/dispatch.cpp= the only
+  env-touching TU (drain, wire conversions, helper decode); =src/handles.cpp=
+  registry + =random_token=; =src/module.cpp= five registered native
+  functions (=native-start/drain/stop/running-p/last-error=); =lisp/
+  emacs-rpc-bridge.el= defcustoms + start/stop owning the drain timer.
+- Thread rules as designed: workers never touch env/Lisp; slots published by
+  the Emacs-thread drain; queue full = wait-backpressure interrupted by
+  stopping/deadline/cancel; give-up marks the slot cancelled so the drain
+  skips execution (no rollback after execution starts). Shutdown ordering
+  begin_stop -> cancel_queued -> server->Shutdown() -> join -> free refs,
+  never from a gRPC thread.
+- gRPC 1.83 reality: =ctx->deadline()= is a =system_clock= time point
+  (=max()= = none), not =gpr_timespec=.  Emacs 31 module API: no
+  =make_int64=/=extract_int64=/=extract_double=; use =make_integer=/
+  =extract_integer= (intmax_t) and =extract_float=; =type_of= answers an
+  interned symbol compared with =eq=; vector creation is funcall('vector').
+- BUG FOUND AND FIXED DURING VALIDATION: =WireError= defaulted
+  =symbol="error"=, so an unfilled job-level fatal never read as unset and
+  the Call handler discarded real per-op results in favor of an empty
+  default error. Default symbol is now =""= (unset); =wire_error_to_proto=
+  already substitutes "error" when emitting. Regression covered by the
+  harness (Call "+" returning 10).
+- Integration harness =tests/integration_test.{cpp,el}=: spawns its own
+  =emacs -Q --batch= running =emacs_bridge_server.el= (pump loop of
+  =sit-for= drives the drain timer), then drives every acceptance scenario
+  over the real socket with the generated client. 47 checks, all PASS,
+  stable across repeated runs; ctest =integration_test= 1.75 s + 120 s
+  watchdog.  Covers: version negotiation/rejection, scalar/text/symbol/
+  handle round-trips, list + buffer handles, Unicode write-back via
+  =WithBuffer=, current-buffer restore on success and in-sequence error,
+  explicit-GC retention, release-then-reuse rejection, kill-buffer not
+  prevented by a global ref (fatal, not crash), per-op error shape,
+  session isolation, >1000-call WithBuffer limit, CloseSession, and
+  shutdown with a request in flight + one queued (deterministic via an
+  =erb-busy= busy-loop op + max-per-tick 1 — =sleep-for= does not block
+  timer re-entry in batch, which let the "pending" request drain early).
+- Harness findings worth recording: (a) ASCII-only =.el= scripts loaded by
+  =load= produce unibyte string literals, so e.g. =buffer-name= of a buffer
+  created from such a literal is a legitimately unibyte string; clients
+  should treat text/unibyte payloads interchangeably by bytes. (b) The
+  first 25 checks exercised the batch Emacs default; final suite config:
+  timer period 0.02 s, max-per-tick 1 in =emacs_bridge_server.el=.
+- NOT DONE in this milestone (still open): session quotas and inactivity
+  leases/expiry ("Process queued session expiry/cleanup ... Enforce quotas
+  and inactivity leases" above) and message-size limits; these wait for
+  TODO 5's disconnect/lease acceptance work. =CloseSession= exists and
+  frees refs on the Emacs thread; the session registry is otherwise
+  unbounded by design until leases land.
+- Validation commands/versions: Emacs 31.1 (=/usr/local/bin/emacs=),
+  gRPC 1.83.1 + protobuf 35.1 from =/home/lesliebinbinhuang/local=;
+  =cmake --preset default= (build dir =build/); =cmake --build build=
+  (module =libemacs-rpc-bridge.so=); =ctest= -> codegen_smoke PASS,
+  integration_test PASS (47/47).
+- lisp adapter validated separately under =emacs -Q --batch=: 23 checks
+  PASS covering helper contracts (=--call-safely=, =--exec-with-buffer=
+  ok/error/fatal shapes, dead-buffer fatal, context restore, empty calls),
+  start/stop lifecycle, restart cycles, explicit knobs, and the live
+  timer-period :set restart.
+
+** DONE TODO 4. Make buffer context explicit
+
+*** Log (2026-09-09): implemented with TODO 3
+
+- =WithBuffer= (proto) + =emacs-rpc-bridge--exec-with-buffer= (lisp helper,
+  see its Commentary for the exact [ok|error|fatal] vector contract decoded
+  in src/dispatch.cpp) execute a bounded call sequence (<= 1000 ops) in one
+  dispatch under =save-current-buffer=.  Context is restored on success and
+  on error; a failure stops the sequence (documented decision: initially
+  yes); earlier edits are kept — contextual grouping, not a transaction; a
+  dead buffer handle yields a fatal entry before any op runs.  Verified
+  end-to-end in the TODO 3 integration harness with =get-buffer-create=,
+  =insert=, =buffer-string=, and =current-buffer=, including error-path
+  restore, and separately in the lisp batch suite (helper contract).
 
 Do not assume =Call("set-buffer", ...)= establishes persistent context for
 later RPCs. Timers, other requests, and editor activity can change context.
