@@ -85,5 +85,10 @@ feature.
 - Deliverable: Generator script and output stubs under =lib/ruby2elisp/stdlib/=, plus RSpec validation.
 
 *** DRAFT Phase 6: Direct Bytecode & Closure Synthesis
+- Added the initial Protobuf interchange schema and receiver handoff under
+  =.spacemacs.d/agents/skills/ruby-elisp-transpiler/assets/=. It describes the
+  datasheet opcode values and compiled-function fields with a portable subset
+  of constants. Multi-language generators can share this format; the Emacs
+  loader, bytecode validator, and transport remain unimplemented.
 - Implement direct opcode emitter utilizing =emacs-opcode-datasheet.md=.
 - Emit raw byte-code closure objects and =.elc= containers.
