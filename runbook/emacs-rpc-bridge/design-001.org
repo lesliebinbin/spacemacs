@@ -170,6 +170,38 @@ error symbol/tag and representable data, with a readable fallback. Call
 and clear an exit before further normal Emacs API calls. Catch C++ exceptions
 at C callback boundaries.
 
+*** Log (2026-09-08): draft contract written, codegen + bindings validated
+
+- Toolchain installed: gRPC v1.83.1 (Release, CMake) built from source at
+  =/mnt/904353e8-.../grpc= into =/home/lesliebinbinhuang/local=. Bundled
+  protobuf 35.1, boringssl module provider (no system OpenSSL needed),
+  other-language plugins and tests disabled. User decision: install the
+  dependency prefix directly — a dependency install cannot introduce bugs
+  into our sources — so no staging prefix was used.
+- =CMakePresets.json= default preset now sets
+  =CMAKE_PREFIX_PATH=/home/lesliebinbinhuang/local=; mise configure/build
+  tasks invoke the preset so the path lives in one place.
+- Codegen wiring in =CMakeLists.txt=: =find_package(protobuf CONFIG)= BEFORE
+  =find_package(gRPC CONFIG)= (gRPC's exported targets reference
+  =protobuf::libprotobuf=/=libprotoc=); explicit protoc + grpc_cpp_plugin
+  custom commands into =build/generated/= (protoc does not create its own
+  output dir); =rpc_bridge_proto= static lib; =tests/codegen_smoke.cpp=
+  executable + =add_test=.
+- Draft contract corrections found by codegen: a repeated field inside a
+  oneof is illegal in proto3, so =WithBufferResponse= carries
+  =results= (repeated) and =error= as siblings.
+- Validation: =ctest= codegen_smoke PASS (bindings compile, link, and
+  round-trip OpenSessionRequest / CallRequest with typed values / Error /
+  WithBuffer); Emacs module still loads and runs under =emacs -Q --batch=
+  (=mise check=). TODO 2 stays open: contract is a draft pending final
+  review (limits, client deadline semantics, examples, higher-level ops).
+- KNOWN FOLLOW-UP, blocking TODO 3: the installed gRPC/absl/protobuf are
+  static and were built WITHOUT position-independent code. Linking them
+  into the dlopened MODULE shared library requires rebuilding the gRPC tree
+  with =-DCMAKE_POSITION_INDEPENDENT_CODE=ON= (or using shared gRPC libs)
+  before the bridge implementation starts. Rebuild cost is the same whenever
+  it happens, so defer it until TODO 3 begins.
+
 ** TODO 3. Implement dispatch and object lifetime
 
 - Register explicit start, drain, and stop native functions, with an Elisp
