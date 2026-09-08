@@ -1,0 +1,85 @@
+#+TITLE: Ruby DSL to Emacs Lisp Transpiler Architecture & Roadmap
+#+AUTHOR: Leslie Huang
+#+DATE: 2026-09-08
+#+STARTUP: showall
+#+TODO: DRAFT(d) READY(r) IN_PROGRESS(i!) BLOCKED(b@) | DONE(D!) CANCELLED(c@)
+
+* READY Ruby DSL to Emacs Lisp Transpiler
+
+** Purpose
+
+Provide a developer-friendly Ruby-like syntax/DSL for writing GNU Emacs extensions,
+transpiling Ruby syntax into executable Emacs constructs without having to hand-author
+nested Elisp parentheses.
+
+This runbook is the single lifecycle, architecture decisions, and task record for the
+feature.
+
+** Repository boundaries
+
+| Area | Responsibility |
+|------+----------------|
+| =~/.emacs.d= | Feature lifecycle runbook (=runbook/ruby-elisp-transpiler/design-001.org=) and Opcode datasheet |
+| =~/.spacemacs.d= | Agent skill (=agents/skills/ruby-elisp-transpiler/=) and procedural runbook (=agents/runbooks/=) |
+| =~/codings/ruby-elisp-transpiler= | Core transpiler implementation (Ruby Gem, Prism parser, AST visitor, CLI, test suite) |
+
+** Architectural decisions
+
+1. *Transpilation strategy: S-expressions first, Bytecode second*
+   - *Phase 1 (Primary Target)*: Transpile Ruby AST to idiomatic Emacs Lisp S-expressions (=.el=)
+     with lexical binding enabled (=;; -*- lexical-binding: t; -*-=).
+     - Rationale: Human-readable output, full source-level debugging via =edebug=,
+       clear error messages, and automatic access to Emacs's built-in byte compiler (=byte-opt.el=)
+       and native compiler (=comp.el= / =gccjit=).
+   - *Phase 2 (Advanced Target)*: Direct bytecode synthesis into compiled closures
+     (=#[args-template byte-string constants-vector max-stack]=) and =.elc= files using
+     =emacs-opcode-datasheet.md=.
+
+2. *Parser selection: Ruby Prism*
+   - Use Ruby core's official parser =Prism= (standard in Ruby 3.3+).
+   - Inherit from =Prism::Visitor= to walk the syntax tree cleanly.
+
+3. *Emacs Lisp Interop & Syntax Mapping*
+   - Method definitions (=def foo(a, b)...end=) map to =(defun foo (a b) ...)=.
+   - Dynamic/global variable access vs lexical stack variables: local variables map to =let*= scopes.
+   - Ruby method calls (=buffer.name= or =point()=) map to Elisp function calls =(buffer-name)= or =(point)=.
+   - Conditionals (=if=, =unless=, =case=) map to =(if ...)=, =(cond ...)=, or =(pcase ...)=.
+   - Blocks/Lambdas map to lexical closures =(lambda (...) ...)=.
+
+** Acceptance criteria
+
+- [ ] Transpiler parses a Ruby DSL source file and generates valid, readable S-expressions in =.el= format.
+- [ ] Emitted =.el= code passes =emacs -Q --batch -f batch-byte-compile= without warnings or errors.
+- [ ] Executed code produces identical behavior between Ruby source logic and Elisp evaluation.
+- [ ] Round-trip integration test runs via automated test harness.
+
+** Lifecycle record
+
+*** DONE Opcode and VM Architecture Exploration
+- Completed deep dive into Emacs 31.1 =src/bytecode.c= and =lisp/emacs-lisp/bytecomp.el=.
+- Documented full VM stack architecture and instruction encoding in =emacs-opcode-datasheet.md=.
+- Verified opcode execution with =disassemble= and raw closure objects =#[...] =.
+
+*** READY Phase 1: Transpiler Project Scaffolding
+- Initialize project at =~/codings/ruby-elisp-transpiler=.
+- Setup Ruby Gem structure with Bundler, =prism= dependency, and RSpec/Minitest.
+- Create CLI entrypoint =bin/ruby2elisp=.
+
+*** DRAFT Phase 2: Core AST Visitor (Prism -> S-Expression)
+- Implement =Ruby2Elisp::Visitor < Prism::Visitor=.
+- Map literals (integers, floats, strings, symbols, booleans, nil).
+- Map variable assignments, binary/unary expressions, and method calls.
+- Map function definitions (=def=) and local blocks.
+
+*** DRAFT Phase 3: Control Flow & Emacs Primitives
+- Implement =if=, =unless=, =case= / =when= constructs.
+- Provide DSL helpers for buffer, window, and editor operations.
+- Map Ruby hash/array syntax to Elisp association lists and vectors.
+
+*** DRAFT Phase 4: Emacs Batch Validation Harness
+- Build test helper invoking =emacs -Q --batch --eval= to compile and test output files.
+- Verify zero compiler warnings with =lexical-binding: t=.
+
+*** DRAFT Phase 5: Direct Bytecode & Closure Synthesis
+- Implement direct opcode emitter utilizing =emacs-opcode-datasheet.md=.
+- Emit raw byte-code closure objects and =.elc= containers.
