@@ -6,6 +6,8 @@
 
 This is a reviewable TODO plan for a future AI agent, not an implemented
 service. The user requested this handoff and selected CMake for future work.
+Milestone 1 (scaffold and validate the CMake build) is DONE as of 2026-09-08;
+see its log below. Milestones 2-6 remain open.
 
 ** Context and objective
 
@@ -24,9 +26,11 @@ cannot accept a function pointer from another process.
 ** Scope and component boundaries
 
 - Coordination and lifecycle: this file in the parent Spacemacs repository.
-- Implementation: =~/.emacs.d/.spacemacs.d/local/extensions/emacs-rpc-bridge/=,
-  inside the =.spacemacs.d= submodule. Keep schema, native module, Elisp
-  adapter, client example, tests, and build instructions together there.
+- Implementation: =~/.emacs.d/.spacemacs.d/local/extensions/rpc-extension/=
+  (directory named by the user; the plan below used the name emacs-rpc-bridge,
+  which is the module/project name chosen 2026-09-08), inside the
+  =.spacemacs.d= submodule. Keep schema, native module, Elisp adapter, client
+  example, tests, and build instructions together there.
 - Build: CMake, with a C++ native module using the public C module API and
   protobuf/gRPC C++ libraries. Do not migrate the existing Meson example.
 - Runtime: installed =/usr/local/bin/emacs= and its matching
@@ -80,7 +84,7 @@ Bound both queue length and work drained per tick. Do not hold queue locks
 while calling Lisp. A long-running Lisp call can still block Emacs: RPC
 does not make arbitrary Lisp execution parallel or preemptible.
 
-** TODO 1. Scaffold and validate the CMake build
+** DONE 1. Scaffold and validate the CMake build
 
 Suggested layout:
 #+begin_example
@@ -108,6 +112,31 @@ emacs-rpc-bridge/
   packages or an explicit reproducible dependency setup.
 - Load the resulting module by absolute path in a fresh Emacs first; defer
   user configuration changes. Provide configurable installation paths later.
+
+*** Log (2026-09-08): scaffold generated, renamed, validated
+
+- Generated from =lesliebinbin/mise-blueprints= ref =emacs-ext/v0.0.1= with
+  =copier copy --defaults= into =rpc-extension/=. Copier answers preserved in
+  =.copier-answers.yml= (=module_name: emacs-rpc-bridge=).
+- Renamed from the template default =my-emacs-module= to =emacs-rpc-bridge=
+  (user decision): CMake project + target, =libemacs-rpc-bridge.so=, Lisp
+  symbol prefix =emacs-rpc-bridge-=, README, mise check eval, install dir.
+- =src/module.cc= moved to =src/module.cpp= and =add_library(...)= switched
+  from SHARED to MODULE, matching the file names and MODULE-target wording
+  of this plan. CMake sources list only =src/module.cpp=.
+- Tool versions recorded: CMake 4.2.3, GCC 15.2.0 (C++20), mise 2026.9.0,
+  Emacs 31.1 at =/usr/local/bin/emacs=; matching
+  =/usr/local/include/emacs-module.h= present (header built 2026-08-24).
+- Validation: =mise build= then =mise check= pass; check loads
+  =build/libemacs-rpc-bridge.so= via =module-load= under =emacs -Q --batch=
+  and calls =emacs-rpc-bridge-hello= successfully. No user configuration
+  touched.
+- Created but NOT yet compiled or CMake-listed (placeholders for later
+  milestones): =proto/emacs_rpc.proto= (draft wire contract feeding TODO 2;
+  no protobuf/gRPC dependency added), =src/server.cpp=, =src/dispatch.cpp=,
+  =src/handles.cpp= (constraint-annotated skeletons for TODO 3).
+- Open follow-up: install protobuf + gRPC C++ toolchain (ask the user first;
+  no silent downloads) before TODO 2 bindings can be generated.
 
 ** TODO 2. Define the protocol contract
 
