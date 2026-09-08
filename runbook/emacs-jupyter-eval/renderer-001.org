@@ -4,7 +4,7 @@
 #+STARTUP: showall
 #+TODO: DRAFT(d) READY(r) IN_PROGRESS(i!) BLOCKED(b@) | DONE(D!) CANCELLED(c@)
 
-* READY Multi-kernel renderer and browser access modes
+* DONE Multi-kernel renderer and browser access modes
 
 ** Purpose
 
@@ -156,30 +156,57 @@ The following behavior remains available in the appropriate access mode:
 
 ** Lifecycle record
 
-*** DRAFT Product implementation
+*** DONE Product implementation
 
-- Branch:
-- Head:
-- Status:
-- Result:
+- Branch: =feature/multi-kernel-renderer-access-modes=
+- Head: =2d0b440=
+- Status: Pushed to =origin/feature/multi-kernel-renderer-access-modes=.
+- Result: Added buffer-associated concurrent sessions, isolated per-session
+  kernels and brokers, a persistent shared renderer, health-checked runtime
+  discovery, session routes, generation-scoped interactive capabilities,
+  read-only widget rendering, targeted stop and stop-all commands, failure
+  isolation, canonical =localhost= to =127.0.0.1= renderer redirection, and
+  updated product documentation.
 
-*** DRAFT Spacemacs integration
+*** DONE Spacemacs integration
 
 - Product ref consumed:
-- Configuration changes:
-- Status:
-- Result:
+  =origin/feature/multi-kernel-renderer-access-modes= at =2d0b440=.
+- Configuration changes: Added
+  =:branch "feature/multi-kernel-renderer-access-modes"= to the
+  =jupyter-eval= =github-ssh= Quelpa recipe.
+- Status: Left uncommitted in the =.spacemacs.d= submodule for user review.
+- Result: The exact recipe cloned the pushed branch, produced a Quelpa package
+  archive containing the coordinator, adapter, brokers, engine, and renderer,
+  and the isolated built package loaded successfully.
 
-*** DRAFT Verification
+*** DONE Verification
 
-- Automated checks:
-- Live multi-kernel result:
-- Interactive xwidget result:
-- External read-only result:
-- Recovery and stale-session result:
+- Automated checks: Renderer TypeScript build and Oxlint passed; all six
+  Python broker tests passed; all nine ERT tests passed.
+- Live multi-kernel result: Two =jupyter-eval-python= sessions ran
+  concurrently, received only their own buffer's code and output, and survived
+  independent stop and forced broker-failure scenarios.
+- Interactive xwidget result: ERT verified that xwidget receives the
+  capability-bearing fragment URL. The current Emacs 31.1 build has no
+  =xwidget-webkit-browse-url=, so a native xwidget GUI smoke test was not
+  available; the authorized transport was exercised live by changing an
+  =IntSlider= from 1 to 7 and reading 7 back from the kernel.
+- External read-only result: ERT verified the plain =browse-url= fallback and
+  read-only renderer mode. Live comm requests with no capability and with
+  another session's capability returned HTTP 403; the correct capability
+  returned HTTP 202.
+- Recovery and stale-session result: Renderer restart rediscovered both live
+  sessions. A forced broker failure removed only its owning session from
+  discovery, and replacing that session created a new generation while the
+  other session remained operational.
 
-*** DRAFT Outcome
+*** DONE Outcome
 
-- Final status:
-- Completed at:
-- Follow-up work:
+- Final status: Implemented, pushed, integrated, and verified.
+- Completed at: 2026-09-07 14:58 +08:00
+- Follow-up work: Perform a visual xwidget smoke test on an Emacs build with
+  xwidget WebKit support before merging the product branch. Chrome access
+  through =localhost:5173= was found to produce an origin mismatch against
+  session brokers; the renderer now redirects it to the canonical
+  =127.0.0.1:5173= origin.
