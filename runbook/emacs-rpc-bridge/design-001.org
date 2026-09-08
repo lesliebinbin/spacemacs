@@ -1,0 +1,231 @@
+#+TITLE: Emacs native module RPC bridge — implementation handoff
+#+TODO: TODO NEXT | DONE
+#+STARTUP: overview
+
+* NEXT Implement a local protobuf/gRPC bridge to Emacs
+
+This is a reviewable TODO plan for a future AI agent, not an implemented
+service. The user requested this handoff and selected CMake for future work.
+
+** Context and objective
+
+Expose a small gateway into Emacs so an external Ruby, Python, Rust, or other
+program can call Lisp functions and manipulate existing Emacs objects.
+Use protobuf messages and gRPC-generated client/server interfaces. Emacs
+owns buffers, windows, frames, and other Lisp objects; clients hold opaque
+remote handles rather than copies of internal C structs.
+
+The module API is a compact function table. =intern= and =funcall= provide
+access to many Lisp functions without one RPC per editor operation.
+=current-buffer= is a Lisp function called through that gateway, not an
+entry in =emacs_env=. =make_function= registers a local C callback; it
+cannot accept a function pointer from another process.
+
+** Scope and component boundaries
+
+- Coordination and lifecycle: this file in the parent Spacemacs repository.
+- Implementation: =~/.emacs.d/.spacemacs.d/local/extensions/emacs-rpc-bridge/=,
+  inside the =.spacemacs.d= submodule. Keep schema, native module, Elisp
+  adapter, client example, tests, and build instructions together there.
+- Build: CMake, with a C++ native module using the public C module API and
+  protobuf/gRPC C++ libraries. Do not migrate the existing Meson example.
+- Runtime: installed =/usr/local/bin/emacs= and its matching
+  =/usr/local/include/emacs-module.h=. Discover and record versions.
+- Existing protobuf bytecode asset: reference only. It describes compiled
+  function artifacts, not this RPC protocol. Loading those artifacts over
+  RPC is a separate future integration.
+
+This documentation task does not authorize installation into the user's
+running editor, automatic startup, or remote network exposure. Start with
+isolated =emacs -Q= tests. Follow the current session's authorization and
+repository instructions when executing the plan.
+
+** Read these assets first
+
+- =~/.emacs.d/AGENTS.md= and =.spacemacs.d/AGENTS.md=.
+- =.spacemacs.d/agents/README.md= and any new local instructions under the
+  target extension directory.
+- =.spacemacs.d/local/extensions/c-cpp/bootstrap/src/module.c=: small native
+  module example. It binds a function object into a variable; the bridge
+  should deliberately register callable Lisp functions using =fset= or
+  =defalias= instead.
+- =.spacemacs.d/local/lisp/user-custom-functions.el=:
+  =custom/load-dynamic-module= shows the existing loading convention.
+- =.spacemacs.d/agents/skills/ruby-elisp-transpiler/assets/emacs-bytecode.proto=
+  and =handoff.org=: related bytecode interchange work.
+
+Read the installed module header and relevant Emacs documentation before
+implementing environment lifetimes, nonlocal exits, or threading. If reading
+an Emacs source checkout, obey its local analysis-only contribution policy.
+Do not edit upstream Spacemacs core files or its =README.md=.
+
+** Architecture and execution model
+
+External client -> local gRPC endpoint -> bounded request queue -> Elisp
+timer calls native drain function -> live emacs_env -> Lisp function.
+Results travel back through a completion queue to the waiting RPC worker.
+
+For the first milestone, use a Unix-domain socket in a private per-user
+runtime directory. Keep the socket directory owner-only. Do not listen on
+an externally reachable TCP address. This API grants editor-level authority
+to clients that can connect; it is not a sandbox for untrusted code.
+
+Network workers decode messages and wait for completions. They must never
+call the Emacs API, dereference Lisp handles, or retain =emacs_env *= for
+later use. The Elisp timer invokes a registered native function on Emacs's
+main thread with a fresh valid environment. Start with polling; an event
+wakeup mechanism can follow after correctness is established.
+
+Bound both queue length and work drained per tick. Do not hold queue locks
+while calling Lisp. A long-running Lisp call can still block Emacs: RPC
+does not make arbitrary Lisp execution parallel or preemptible.
+
+** TODO 1. Scaffold and validate the CMake build
+
+Suggested layout:
+#+begin_example
+emacs-rpc-bridge/
+  CMakeLists.txt
+  CMakePresets.json
+  README.org
+  proto/emacs_rpc.proto
+  src/module.cpp
+  src/server.cpp
+  src/dispatch.cpp
+  src/handles.cpp
+  lisp/emacs-rpc-bridge.el
+  examples/python/client.py
+  tests/
+#+end_example
+
+- Use an out-of-source build and CMake =MODULE= target. Export
+  =emacs_module_init= and =plugin_is_GPL_compatible= with C linkage.
+- Discover =emacs-module.h= through a configurable include path. Check
+  runtime/environment structure sizes before using required API members.
+- Use imported protobuf/gRPC CMake targets and build-time code generation
+  with =protoc= and =grpc_cpp_plugin=. Record compatible tool versions.
+- Do not silently download dependencies at configure time. Document system
+  packages or an explicit reproducible dependency setup.
+- Load the resulting module by absolute path in a fresh Emacs first; defer
+  user configuration changes. Provide configurable installation paths later.
+
+** TODO 2. Define the protocol contract
+
+Use a separate versioned package, for example =emacs.rpc.v1=. First define
+the exact wire contract and examples; then generate bindings.
+
+Initial operations:
+- =OpenSession=: negotiate protocol version and return a session identity.
+- =Call=: function symbol name plus typed arguments, returning a typed value
+  or structured Lisp error. Intern function names locally when dispatching.
+- =ReleaseHandles=: release session-owned references explicitly.
+- =CloseSession=: queue reference cleanup on the Emacs thread.
+
+An explicit =Intern= RPC is optional: symbol names can be represented as
+values, and =Call= already combines lookup and invocation.
+
+Values should distinguish nil, true, signed 64-bit integer, double, UTF-8
+text, unibyte bytes, symbol name, and object handle. Symbols are not strings;
+unibyte data is not UTF-8 text. Initially return unsupported/compound/live
+objects as handles. Reject out-of-range integers instead of truncating.
+
+Each request carries its session and correlation ID. Each handle carries
+an opaque ID scoped to that session; an optional kind is informational,
+not trusted type validation. Never serialize an address or =emacs_value=.
+Define limits for message sizes, arguments, handles, queued requests, and
+session inactivity. gRPC channels alone do not define session lifetime.
+
+Define transport failures separately from Emacs signals/throws. Preserve
+error symbol/tag and representable data, with a readable fallback. Call
+=non_local_exit_check= after potentially exiting API operations; extract
+and clear an exit before further normal Emacs API calls. Catch C++ exceptions
+at C callback boundaries.
+
+** TODO 3. Implement dispatch and object lifetime
+
+- Register explicit start, drain, and stop native functions, with an Elisp
+  adapter that creates/cancels the timer.
+- Keep persistent objects with =make_global_ref= and release them through
+  =free_global_ref= only in a valid Emacs context. Temporary local values
+  must not outlive their callback. Use a session-scoped handle table.
+- Reject wrong-session, expired, and released handles. Keeping a buffer
+  object alive does not prevent =kill-buffer=; operations must handle dead
+  buffers correctly.
+- Process queued session expiry/cleanup on the Emacs thread. Enforce quotas
+  and inactivity leases so disconnected clients do not leak indefinitely.
+- Give requests queued/running/completed/cancelled states. Cancellation
+  before execution can prevent execution; a client deadline after execution
+  begins does not roll back effects or guarantee interruption. Do not retry
+  side-effecting calls automatically.
+- Stop accepting requests before shutdown, cancel pending work, stop the
+  timer, and release references while Emacs is alive. Avoid blocking the
+  Emacs thread joining a worker that is waiting for Emacs dispatch.
+
+** TODO 4. Make buffer context explicit
+
+Do not assume =Call("set-buffer", ...)= establishes persistent context for
+later RPCs. Timers, other requests, and editor activity can change context.
+
+Add an explicit =WithBuffer= operation taking a buffer handle and a bounded
+sequence of calls. Execute the sequence in one dispatch under
+=save-current-buffer=, restoring context on success and error. An Elisp
+helper invoked by the module is a suitable implementation. State whether
+individual failures stop the sequence (initially yes). Earlier edits are
+not automatically rolled back; this is contextual grouping, not a transaction.
+
+Demonstrate =get-buffer-create=, =insert=, =buffer-string=, and
+=current-buffer= using this operation. Window display changes such as
+=switch-to-buffer= are separate, deliberate editor effects.
+
+** TODO 5. Demonstrate a generated client and runtime tests
+
+Use a Python client generated from the same schema as a first independent
+consumer. It requires no direct Tree-sitter or Emacs C bindings.
+
+Acceptance criteria:
+- CMake configure/build succeeds; module loads in installed Emacs under
+  =-Q=; generated client connects through the local socket.
+- =Call("+", [3, 7])= returns integer 10.
+- Create a scratch buffer, obtain a handle, insert text within =WithBuffer=,
+  and read back identical Unicode text. Verify original current buffer is
+  restored, including when an operation signals an error.
+- After an error, a subsequent valid call succeeds and Emacs remains usable.
+- Retain a handle across an explicit Emacs garbage collection and use it;
+  release it and verify reuse fails. Test killed buffers and session isolation.
+- Exercise message limits, queued cancellation, disconnect/lease cleanup,
+  and shutdown with pending requests. Record the deadline behavior for a
+  running call without claiming rollback.
+- A batch integration harness must continue pumping Emacs events so timers
+  can drain requests; do not synchronously wait for the client on the Emacs
+  thread. Put timeouts on the harness to diagnose deadlocks.
+- Document exact successful commands and versions. Use isolated buffers and
+  fresh processes; no dependence on the user's active Spacemacs session.
+
+** TODO 6. Optional follow-up: remote callbacks
+
+=make_function= accepts a local C callback, not an RPC payload. A later
+=RegisterCallback= operation could create a local trampoline holding a
+remote callback ID. This requires bidirectional messaging and defined
+callback ownership, disconnect behavior, errors, cancellation, and recursion.
+
+Decide reentrancy before implementation: blocking Emacs while a remote
+callback calls back into Emacs can deadlock. Do not present arbitrary
+synchronous callbacks as part of the initial supported contract.
+
+Other later work: Ruby/Rust clients, higher-level Buffer/Window/Frame
+wrappers, event subscriptions, and integration with bytecode artifacts.
+
+** Handoff completion checklist
+
+The next agent should update TODO states here and record decisions, actual
+paths, validation commands/results, and remaining limitations. Keep feature
+lifecycle in this file. Keep usage/build documentation with the extension.
+Do not claim RPC makes Emacs multithreaded or makes the wire contract a
+complete description of Elisp function signatures.
+
+** DONE Planning asset created
+
+- Inspected the existing C module and loading helper.
+- Selected a separate CMake project at the user's requested extension root.
+- Defined initial scope, thread handoff, handle ownership, and acceptance tests.
+- Implementation, dependency installation, and deployment remain TODO.

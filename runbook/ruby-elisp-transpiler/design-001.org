@@ -92,3 +92,17 @@ feature.
   loader, bytecode validator, and transport remain unimplemented.
 - Implement direct opcode emitter utilizing =emacs-opcode-datasheet.md=.
 - Emit raw byte-code closure objects and =.elc= containers.
+
+**** DONE Protobuf-to-Emacs micro project
+- Project: =~/codings/emacs-bytecode-proto-demo=; see its =README.md= and
+  =HANDOFF.md= for commands, supported subset, and schema provenance.
+- Implemented by Copilot through ACP under root-agent guidance and review.
+- Rust/prost generates and decodes binary artifacts from the supplied schema,
+  validates a limited non-branching instruction subset, and emits a structural
+  =make-byte-code= expression for execution in fresh Emacs 31.1 batch processes.
+- Verified 10 tests, Clippy with warnings denied, return value 42, addition
+  3 + 7 = 10, and temporary-buffer insertion producing hello.
+- Independent coordinator check: a binary encoded by protoc from textproto
+  was decoded by the Rust receiver and returned 73 in Emacs.
+- This is a trusted local prototype, not the full Phase 6 compiler or a
+  general validator, native-module receiver, network transport, or sandbox.
